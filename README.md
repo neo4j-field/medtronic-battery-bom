@@ -1,4 +1,4 @@
-# Medtronic Supply Chain Graph: Neo4j Implementation
+# Medtronic Supply Chain Graph
 
 ## Introduction
 
@@ -29,3 +29,12 @@ This README provides an overview and detailed instructions for setting up and ut
 ### To Build: run statements in the `/cypher` directory in a neo4j browser session.
 
 * Source files are found in GCP Bucket: `neo4j-se-team-201905/neo4j-se-fournier/medtronic`
+
+
+### Data models
+
+
+
+![data model](resources/img_1.png)
+
+![data model](resources/img.png)
