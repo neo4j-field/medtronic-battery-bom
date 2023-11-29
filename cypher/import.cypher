@@ -1,5 +1,6 @@
 //creates indexes in neo4j
 CREATE INDEX FOR (a:Activity) ON (a.id);
+CREATE INDEX FOR (a:Activity) ON (a.time); // two distinct indexes for :Activity, instead of a composite index , because I do not expect both properties to be in a predicate at once.
 CREATE INDEX FOR (l:Lot) ON (l.id);
 CREATE INDEX FOR (p:Product) ON (p.id);
 CREATE INDEX FOR (l:Lot) ON (l.id);
@@ -11,15 +12,28 @@ CREATE INDEX FOR (l:LotLocation) ON (l.id);
 
 //Activity Nodes
 //question: is SysId a unique identifier for each activity
-:auto WITH 'file:///lot_info.csv' as file
+:auto
+WITH 'file:///lot_info.csv' as file
 LOAD CSV WITH HEADERS FROM file as row
-WITH row.SYSID as activityId, row.NAME as activityName
+WITH row.SYSID as activityId, row.NAME as activityName, row.TXNTIME as txTime
 CALL {
-    WITH activityName, activityId
+    WITH activityName, activityId, txTime
+    WITH
+        substring(txTime, 0, 4) + '-' +  // Year
+        substring(txTime, 4, 2) + '-' +  // Month
+        substring(txTime, 6, 2) + 'T' +  // Day
+        substring(txTime, 9, 2) + ':' +  // Hour
+        substring(txTime, 11, 2) + ':' + // Minute
+        substring(txTime, 13, 2) + '.' +
+        substring(txTime, 15, 3)
+        AS formattedDateTime, activityName, activityId
     MERGE (a:Activity {id: activityId})
     ON CREATE
-        SET a.name = activityName
+        SET a.name = activityName,
+            a.time = datetime(formattedDateTime)
 } IN TRANSACTIONS OF 10000 ROWS;
+
+
 
 
 //LotLocation Nodes
@@ -142,8 +156,7 @@ MERGE (lot) - [:HAS_CHILD] -> (component);
 
 
 //READ QUERIES
-//Activity linked list match
-//Total activities
+//Activity Sequences ... query just shows the different linked lists/sequences of activities we generated (not filtered on anything else).
 MATCH (startActivity:Activity)
 WHERE NOT ()-[:NEXT]->(startActivity)
 MATCH (startActivity)-[:OCCURS_ON]->(step:Step)-[:PART_OF]->(lot:Lot)
@@ -175,6 +188,42 @@ MATCH occurs_path = (act)-[o:OCCURS_ON]->(s:Step)
 WITH activityPath, occurs_path
 RETURN occurs_path
 
+//Activities and steps associated with a specific operator -- with date filter.
+
+// Activities and steps associated with a specific operator
+MATCH (o:Operator {id: 'johnm4'})
+WITH o
+MATCH (o) <- [:PERFORMED_BY] - (startActivity:Activity)
+WHERE NOT EXISTS ((startActivity) <- [:NEXT] - (:Activity)) AND
+datetime(startActivity.time) >= datetime('2023-08-31T00:00:00') AND
+datetime(startActivity.time) <= datetime('2023-12-31T23:59:59')
+WITH o, startActivity
+MATCH activityPath = (o)<-[:PERFORMED_BY]-(startActivity)
+((:Activity)-[:NEXT]->(a_i:Activity)){1,25}
+(a:Activity WHERE NOT EXISTS {(a)-[:NEXT]->()})
+WITH activityPath, startActivity, a_i
+UNWIND [startActivity]+a_i AS act
+MATCH occurs_path = (act)-[o:OCCURS_ON]->(s:Step)
+WITH activityPath, occurs_path
+RETURN occurs_path
+
+
+// Activities and steps associated with a specific operator
+MATCH (o:Operator {id: 'johnm4'})
+WITH o
+MATCH (o) <- [:PERFORMED_BY] - (startActivity:Activity)
+WHERE NOT EXISTS ((startActivity) <- [:NEXT] - (:Activity))
+WITH o, startActivity
+MATCH activityPath = (o)<-[:PERFORMED_BY]-(startActivity)
+((:Activity)-[:NEXT]->(a_i:Activity)){1,25}
+(a:Activity WHERE NOT EXISTS {(a)-[:NEXT]->()})
+WITH activityPath, startActivity, a_i
+UNWIND [startActivity]+a_i AS act
+MATCH occurs_path = (act)-[o:OCCURS_ON]->(s:Step)
+WITH activityPath, occurs_path
+RETURN occurs_path
+
+
 
 //first activities
 MATCH (startActivity:Activity)
@@ -194,5 +243,20 @@ MATCH (o)-[:PERFORMED_BY]->(activity:Activity)
 WHERE NOT EXISTS((activity)<-[:NEXT]-(:Activity))
 RETURN act
 
+
+
+WITH '20230713 103637000' as line
+WITH
+  substring(line, 0, 4) + '-' +
+  substring(line, 4, 2) + '-' +
+  substring(line, 6, 5) + ':' +
+  substring(line, 11, 2) + ':' +
+  substring(line, 13, 2) + '.' +
+  substring(line, 15) AS formattedDateTime
+RETURN datetime(formattedDateTime)
+
+
+Text cannot be parsed to a DateTime
+"2023-07-13 10:36:37.000"
 
 
